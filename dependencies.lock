@@ -1,15 +1,59 @@
 dependencies:
-  espressif/esp-dsp:
-    component_hash: 3e7bbd487f1357a1d4944d0c85966d049501ea281b8a4c7f93f7cfedd5b7f23d
+  espressif/cjson:
+    component_hash: 002c6d1872ee4c97d333938ebe107a29841cc847f9de89e676714bd2844057ea
+    dependencies:
+    - name: idf
+      require: private
+      version: '>=5.0'
     source:
-      service_url: https://api.components.espressif.com/
+      registry_url: https://components.espressif.com
       type: service
-    version: 1.4.12
+    version: 1.7.19~1
+  espressif/esp-dsp:
+    component_hash: 939e9c053487d6e7b7320a5cb761b2200e4b331730d6721668755ef76ab9f067
+    dependencies:
+    - name: idf
+      require: private
+      version: '>=4.2'
+    source:
+      registry_url: https://components.espressif.com/
+      type: service
+    version: 1.7.1
+  espressif/esp_websocket_client:
+    component_hash: c5a067a9fddea370c478017e66fac302f4b79c3d4027e9bdd42a019786cceb92
+    dependencies:
+    - name: idf
+      require: private
+      version: '>=5.0'
+    source:
+      registry_url: https://components.espressif.com
+      type: service
+    version: 1.6.1
   idf:
-    component_hash: null
     source:
       type: idf
-    version: 5.2.2
-manifest_hash: 413705fe60e0efbdef012dd3e2bc5c463c8f2b3944ed8bf346b2c69261a82a6b
+    version: 5.5.2
+  sinricpro/esp-idf:
+    component_hash: a726030c2316fc6d7a2b4d435d206e76fd70b04e87dab2485f08124b82c969d3
+    dependencies:
+    - name: espressif/cjson
+      registry_url: https://components.espressif.com
+      require: private
+      version: '*'
+    - name: espressif/esp_websocket_client
+      registry_url: https://components.espressif.com
+      require: private
+      version: ^1.2.0
+    - name: idf
+      require: private
+      version: '>=4.4'
+    source:
+      registry_url: https://components.espressif.com/
+      type: service
+    version: 1.1.2
+direct_dependencies:
+- espressif/esp-dsp
+- sinricpro/esp-idf
+manifest_hash: 26bcb398afcd93caa5277c792169edee2ba3c16bf185137db4ad3bef795bbd70
 target: esp32s3
-version: 1.0.0
+version: 2.0.0

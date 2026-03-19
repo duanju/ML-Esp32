@@ -3,11 +3,11 @@
 
 // First include the device operations (ESP32 in your case)
 #include <rl_tools/operations/esp32.h>
+#include <rl_tools/devices/esp32.h>
+// Then include other RLtools components
 #include <rl_tools/nn/layers/dense/operations_generic.h>
 #include <rl_tools/nn/capability/capability.h>
-// Then include other RLtools components
 #include <rl_tools/nn/optimizers/adam/operations_generic.h>
-#include <rl_tools/devices/esp32.h>
 #include <rl_tools/rl_tools.h>
 namespace rlt = rl_tools;
 // add HVACControler in namespace hvac

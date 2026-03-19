@@ -1,4 +1,4 @@
-#include <stdint.h>
+#include <stdio.h>
 #include "hvac_controler.h"
 
 namespace hvac
@@ -13,6 +13,7 @@ namespace hvac
 
     float HVACControler::request(float env_status)
     {
+        printf("Requesting control action for environment status: %f\n", env_status);
         return 0.0f;
     }
 } // namespace hvac

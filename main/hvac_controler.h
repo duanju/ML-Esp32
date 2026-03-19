@@ -21,25 +21,13 @@ namespace hvac
     using TI = typename DEVICE::index_t;
 
     constexpr TI BATCH_SIZE = 1;
-    // constexpr TI NUM_EPOCHS = 1;
     constexpr TI INPUT_DIM = 5;
     constexpr TI OUTPUT_DIM = 5;
-    // constexpr TI NUM_LAYERS = 3;
-    // constexpr TI HIDDEN_DIM = 50;
     constexpr auto ACTIVATION_FUNCTION = rlt::nn::activation_functions::RELU;
-    // constexpr auto ACTIVATION_FUNCTION_OUTPUT = rlt::nn::activation_functions::IDENTITY;
-    // constexpr TI DATASET_SIZE_TRAIN = 300;
-    // constexpr TI DATASET_SIZE_VAL = 300;
-    // constexpr TI NUM_BATCHES = DATASET_SIZE_TRAIN / BATCH_SIZE;
 
     using LAYER_CONFIG = rlt::nn::layers::dense::Configuration<TYPE_POLICY, TI, OUTPUT_DIM, ACTIVATION_FUNCTION>;
-    // using PARAMETER_TYPE = rlt::nn::parameters::Adam;
     using CAPABILITY = rlt::nn::capability::Forward<>;
-    // using OPTIMIZER_SPEC = rlt::nn::optimizers::adam::Specification<TYPE_POLICY, TI>;
-    // using OPTIMIZER = rlt::nn::optimizers::Adam<OPTIMIZER_SPEC>;
     using INPUT_SHAPE = rlt::tensor::Shape<TI, BATCH_SIZE, INPUT_DIM>;
-    // using MODEL_CONFIG = rlt::nn_models::mlp::Configuration<TYPE_POLICY, TI, OUTPUT_DIM, NUM_LAYERS, HIDDEN_DIM, ACTIVATION_FUNCTION, ACTIVATION_FUNCTION_OUTPUT>;
-    // using MODEL_TYPE = rlt::nn_models::mlp::NeuralNetwork<MODEL_CONFIG, CAPABILITY, INPUT_SHAPE>;
     using Layer = rlt::nn::layers::dense::Layer<LAYER_CONFIG, CAPABILITY, INPUT_SHAPE>;
 
     class HVACControler

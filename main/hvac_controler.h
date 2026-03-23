@@ -5,9 +5,9 @@
 #include <rl_tools/operations/esp32.h>
 #include <rl_tools/devices/esp32.h>
 // Then include other RLtools components
-#include <rl_tools/nn/layers/dense/operations_generic.h>
 #include <rl_tools/nn/capability/capability.h>
-#include <rl_tools/nn/optimizers/adam/operations_generic.h>
+#include <rl_tools/nn/layers/dense/layer.h>
+#include <rl_tools/nn_models/sequential/operations_generic.h>
 #include <rl_tools/rl_tools.h>
 namespace rlt = rl_tools;
 // add HVACControler in namespace hvac
@@ -20,15 +20,29 @@ namespace hvac
     using TYPE_POLICY = rlt::numeric_types::Policy<T>;
     using TI = typename DEVICE::index_t;
 
-    constexpr TI BATCH_SIZE = 1;
-    constexpr TI INPUT_DIM = 5;
-    constexpr TI OUTPUT_DIM = 5;
     constexpr auto ACTIVATION_FUNCTION = rlt::nn::activation_functions::RELU;
 
-    using LAYER_CONFIG = rlt::nn::layers::dense::Configuration<TYPE_POLICY, TI, OUTPUT_DIM, ACTIVATION_FUNCTION>;
+    using LAYER_1_CONFIG = rlt::nn::layers::dense::Configuration<TYPE_POLICY, TI, 32,
+                                                                 ACTIVATION_FUNCTION>;
+    using Layer_1 = rlt::nn::layers::dense::BindConfiguration<LAYER_1_CONFIG>;
+    using LAYER_2_CONFIG = rlt::nn::layers::dense::Configuration<TYPE_POLICY, TI, 16,
+                                                                 ACTIVATION_FUNCTION>;
+    using Layer_2 = rlt::nn::layers::dense::BindConfiguration<LAYER_2_CONFIG>;
+    using LAYER_3_CONFIG = rlt::nn::layers::dense::Configuration<TYPE_POLICY, TI, 4,
+                                                                 rlt::nn::activation_functions::IDENTITY>;
+    using Layer_3 = rlt::nn::layers::dense::BindConfiguration<LAYER_3_CONFIG>;
+
     using CAPABILITY = rlt::nn::capability::Forward<>;
-    using INPUT_SHAPE = rlt::tensor::Shape<TI, BATCH_SIZE, INPUT_DIM>;
-    using Layer = rlt::nn::layers::dense::Layer<LAYER_CONFIG, CAPABILITY, INPUT_SHAPE>;
+    
+    using namespace rlt::nn_models::sequential;
+    using MUDLE_CHAIN = Module<Layer_1, Module<Layer_2, Module<Layer_3>>>;
+
+    constexpr TI SEQUENCE_LENGTH = 1;
+    constexpr TI BATCH_SIZE = 1;
+    constexpr TI INPUT_DIM = 5;
+    using INPUT_SHAPE = rlt::tensor::Shape<TI, SEQUENCE_LENGTH, BATCH_SIZE, INPUT_DIM>;
+
+    using SEQUENTIAL = Build<CAPABILITY, MUDLE_CHAIN, INPUT_SHAPE>;
 
     class HVACControler
     {
@@ -42,8 +56,8 @@ namespace hvac
         DEVICE device;
         RNG rng;
         TI seed = 0;
-        // OPTIMIZER optimizer;
-        Layer layer;
+        SEQUENTIAL sequential;
+        SEQUENTIAL::Buffer<> sequential_buffer;
     };
 } // namespace hvac
 

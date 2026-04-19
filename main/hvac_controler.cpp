@@ -1,6 +1,6 @@
 #include <stdio.h>
-#include <rl_tools/operations/esp32.h>
-#include <rl_tools/nn_models/sequential/operations_generic.h>
+// #include <rl_tools/operations/esp32.h>
+// #include <rl_tools/nn_models/sequential/operations_generic.h>
 #include "hvac_controler.h"
 
 namespace hvac
@@ -15,8 +15,8 @@ namespace hvac
 
     float HVACControler::request(float env_status)
     {
-        rlt::Tensor<rlt::tensor::Specification<T, TI, typename SEQUENTIAL::INPUT_SHAPE, false>> input;
-        rlt::Tensor<rlt::tensor::Specification<T, TI, typename SEQUENTIAL::OUTPUT_SHAPE, false>> output;
+        // rlt::Tensor<rlt::tensor::Specification<T, TI, typename SEQUENTIAL::INPUT_SHAPE, false>> input;
+        // rlt::Tensor<rlt::tensor::Specification<T, TI, typename SEQUENTIAL::OUTPUT_SHAPE, false>> output;
 
         // Manually set values at each index
         // rlt::set(device, input, 0, 1.5f);
@@ -25,7 +25,7 @@ namespace hvac
         // rlt::set(device, input, 3, 3.14f);
         // rlt::set(device, input, 4, 0.0f);
 
-        rlt::forward(device, sequential, input, sequential_buffer, rng);
+        // rlt::forward(device, sequential, input, sequential_buffer, rng);
         // print output for debugging
         // printf("Output: ");
         // for (TI i = 0; i < output.shape().size(); ++i)        {

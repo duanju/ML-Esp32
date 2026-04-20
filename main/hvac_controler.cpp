@@ -30,7 +30,6 @@ namespace hvac
         rlt::malloc(device, input_mlp);
         rlt::malloc(device, d_input_mlp);
         rlt::malloc(device, d_output_mlp);
-
     }
 
     float HVACControler::request(float env_status)
@@ -46,11 +45,11 @@ namespace hvac
         // compute loss and gradients, then update model parameters using the optimizer
         // train for 100 iterations
         T loss_avg = 0;
-        for (size_t batch = 0; batch < 15; batch++)
+        for (size_t epsilon = 0; epsilon < TRAINING_EPOCHS; epsilon++)
         {
             T loss_total = 0;
             rlt::zero_gradient(device, model);
-            for (size_t i = 0; i < 100; i++)
+            for (size_t i = 0; i < 500; i++)
             {
                 T x = dataset::ln_inputs[i];
                 rlt::set(d_input_mlp, 0, 0, x);
@@ -59,15 +58,19 @@ namespace hvac
                 T output_value = get(model.output_layer.output, 0, 0);
                 T loss = (output_value - target) * (output_value - target); // simple MSE loss
                 loss_total += loss;
-                T loss_gradient = 2.0f * (output_value - target);
+                T loss_gradient = 2.0f * (output_value - target) / 500; // gradient of MSE loss w.r.t. output, averaged over the batch
                 rlt::set(d_output_mlp, 0, 0, loss_gradient);
                 rlt::backward(device, model, d_input_mlp, d_output_mlp, buffer);
+                if (i % 100 == 0)
+                {
+                    printf("Sample %d, Input: %f, Target: %f, Output: %f, Loss: %f\n", i, x, target, output_value, loss);
+                }
             }
 
             rlt::step(device, optimizer, model);
-            loss_avg = loss_total / 100;
+            loss_avg = loss_total / 500;
 
-            printf("Batch %d, Loss: %f\n", batch, loss_avg);
+            printf("Batch %d, Loss: %f\n", epsilon, loss_avg);
         }
         return loss_avg;
     }

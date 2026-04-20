@@ -25,7 +25,7 @@ namespace hvac
     using T = float;
     using TYPE_POLICY = rlt::numeric_types::Policy<T>;
 
-    constexpr TI INPUT_DIM_MLP = 5;
+    constexpr TI INPUT_DIM_MLP = 1;
     constexpr TI OUTPUT_DIM_MLP = 1;
     constexpr TI NUM_LAYERS = 3;
     constexpr TI HIDDEN_DIM = 10;

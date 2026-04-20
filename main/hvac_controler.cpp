@@ -25,11 +25,12 @@ namespace hvac
         rlt::init_weights(device, model, rng); // recursively initializes all layers using kaiming initialization
         rlt::init(device, optimizer);
         rlt::zero_gradient(device, model); // recursively zeros all gradients in the layers
-        // rlt::reset_optimizer_state(device, optimizer, model);
+        rlt::reset_optimizer_state(device, optimizer, model);
         rlt::malloc(device, buffer);
         rlt::malloc(device, input_mlp);
         rlt::malloc(device, d_input_mlp);
         rlt::malloc(device, d_output_mlp);
+
     }
 
     float HVACControler::request(float env_status)
@@ -45,7 +46,7 @@ namespace hvac
         // compute loss and gradients, then update model parameters using the optimizer
         // train for 100 iterations
         T loss_avg = 0;
-        for (size_t batch = 0; batch < 10; batch++)
+        for (size_t batch = 0; batch < 15; batch++)
         {
             T loss_total = 0;
             rlt::zero_gradient(device, model);

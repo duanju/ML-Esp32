@@ -11,6 +11,8 @@
 #include <rl_tools/nn_models/mlp/operations_generic.h>
 #include <rl_tools/nn/optimizers/adam/operations_generic.h>
 
+#include <algorithm>
+#include <rl_tools/random/operations_generic.h>
 // #include <rl_tools/containers/tensor/tensor.h>
 #include "hvac_controler.h"
 #include "data/test_backprop_tools_nn_models_mlp_training.h"
@@ -30,6 +32,7 @@ namespace hvac
         rlt::malloc(device, input_mlp);
         rlt::malloc(device, d_input_mlp);
         rlt::malloc(device, d_output_mlp);
+        for(TI i = 0; i < DATASET_SIZE; i++) indices[i] = i;
     }
 
     float HVACControler::request(float env_status)
@@ -49,16 +52,18 @@ namespace hvac
         {
             T loss_total = 0;
             rlt::zero_gradient(device, model);
-            for (size_t i = 0; i < 500; i++)
+            shuffle();
+            for (size_t i = 0; i < DATASET_SIZE; i++)
             {
-                T x = dataset::ln_inputs[i];
+                size_t idx = indices[i];
+                T x = dataset::ln_inputs[idx];
                 rlt::set(d_input_mlp, 0, 0, x);
-                T target = dataset::ln_targets[i];
+                T target = dataset::ln_targets[idx];
                 rlt::forward(device, model, d_input_mlp, buffer, rng);
                 T output_value = get(model.output_layer.output, 0, 0);
                 T loss = (output_value - target) * (output_value - target); // simple MSE loss
                 loss_total += loss;
-                T loss_gradient = 2.0f * (output_value - target) / 500; // gradient of MSE loss w.r.t. output, averaged over the batch
+                T loss_gradient = 2.0f * (output_value - target) / DATASET_SIZE; // gradient of MSE loss w.r.t. output, averaged over the batch
                 rlt::set(d_output_mlp, 0, 0, loss_gradient);
                 rlt::backward(device, model, d_input_mlp, d_output_mlp, buffer);
                 if (i % 100 == 0)
@@ -68,10 +73,17 @@ namespace hvac
             }
 
             rlt::step(device, optimizer, model);
-            loss_avg = loss_total / 500;
+            loss_avg = loss_total / DATASET_SIZE;
 
             printf("Batch %d, Loss: %f\n", epsilon, loss_avg);
         }
         return loss_avg;
+    }
+
+    void HVACControler::shuffle() {
+        for (TI i = DATASET_SIZE - 1; i > 0; --i) {
+            TI j = rlt::random::uniform_int_distribution(device.random, (TI)0, i, rng);
+            std::swap(indices[i], indices[j]);
+        }
     }
 } // namespace hvac

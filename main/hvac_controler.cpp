@@ -56,10 +56,14 @@ namespace hvac
         compute_normalization_stats();
         
         // compute loss and gradients, then update model parameters using the optimizer
-        // train for 100 iterations
-        T loss_avg = 0;
-        for (size_t epsilon = 0; epsilon < TRAINING_EPOCHS; epsilon++)
+        // train until loss is less than 0.0001 or convergence (gap < 0.001)
+        T loss_avg = 1.0f;
+        T prev_loss_avg = 1.0f;
+        size_t epoch = 0;
+        
+        while (epoch < MAX_EPOCHS)
         {
+            prev_loss_avg = loss_avg;
             T loss_total = 0;
             rlt::zero_gradient(device, model);
             shuffle();
@@ -87,8 +91,20 @@ namespace hvac
             rlt::step(device, optimizer, model);
             loss_avg = loss_total / DATASET_SIZE;
 
-            printf("Batch %d, Loss: %f\n", epsilon, loss_avg);
+            printf("Epoch %d, Loss: %f, Gap: %f\n", epoch, loss_avg, (prev_loss_avg - loss_avg));
+            epoch++;
+            
+            // Check stopping criteria
+            if (epoch > 0 && (prev_loss_avg - loss_avg) < CONVERGENCE_THRESHOLD) {
+                printf("Training converged! Loss gap: %f (< %f) after %d epochs\n", (prev_loss_avg - loss_avg), CONVERGENCE_THRESHOLD, epoch);
+                break;
+            }
         }
+        
+        if (epoch >= MAX_EPOCHS) {
+            printf("Training stopped! Reached max epochs (%d) with loss: %f\n", MAX_EPOCHS, loss_avg);
+        }
+        
         return loss_avg;
     }
 

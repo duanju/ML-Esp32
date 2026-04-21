@@ -29,9 +29,11 @@ namespace hvac
     constexpr TI OUTPUT_DIM_MLP = 1;
     constexpr TI NUM_LAYERS = 3;
     constexpr TI HIDDEN_DIM = 32;
-    constexpr TI BATCH_SIZE = 1; // Since the controler is used in an online setting, the batch size is set to 1. However, if you want to use the controler in an offline setting, you can increase the batch size and modify the request function accordingly.
-    constexpr TI TRAINING_EPOCHS = 20; // Since the controler is used in an online setting, the batch size is set to 1. However, if you want to use the controler in an offline setting, you can increase the batch size and modify the request function accordingly.
+    constexpr TI BATCH_SIZE = 1;       // Since the controler is used in an online setting, the batch size is set to 1. However, if you want to use the controler in an offline setting, you can increase the batch size and modify the request function accordingly.
     constexpr TI DATASET_SIZE = 500;
+    constexpr size_t MAX_EPOCHS = 10000; // Safety limit to prevent infinite loops
+    constexpr TI TRAINING_EPOCHS = 20; // Since the controler is used in an online setting, the batch size is set to 1. However, if you want to use the controler in an offline setting, you can increase the batch size and modify the request function accordingly.
+    constexpr T CONVERGENCE_THRESHOLD = 0.00001f;
 
     constexpr auto ACTIVATION_FUNCTION_MLP = rlt::nn::activation_functions::RELU;
     constexpr auto OUTPUT_ACTIVATION_FUNCTION_MLP = rlt::nn::activation_functions::IDENTITY;
@@ -54,7 +56,8 @@ namespace hvac
         // e.g., you might want to pass in more information about the environment status
         float request(float env_status); // request control action based on status
         T update();
-    private :
+
+    private:
         // internal state and methods for the controler
         DEVICE device;
         RNG rng;
@@ -69,7 +72,7 @@ namespace hvac
 
         TI indices[DATASET_SIZE];
         void shuffle();
-        
+
         // Normalization
         T input_min, input_max;
         T output_min, output_max;

@@ -37,14 +37,24 @@ namespace hvac
 
     float HVACControler::request(float env_status)
     {
-        rlt::randn(device, input_mlp, rng);
+        // Normalize input
+        T normalized_input = normalize(env_status, input_min, input_max);
+        rlt::set(input_mlp, 0, 0, normalized_input);
+        
+        // Forward pass
         rlt::forward(device, model, input_mlp, buffer, rng);
-        T output_value = rlt::get(model.output_layer.output, 0, 0);
+        T normalized_output = rlt::get(model.output_layer.output, 0, 0);
+        
+        // Denormalize output back to original scale
+        T output_value = denormalize(normalized_output, output_min, output_max);
         return output_value;
     }
 
     T HVACControler::update()
     {
+        // Compute normalization statistics on first call
+        compute_normalization_stats();
+        
         // compute loss and gradients, then update model parameters using the optimizer
         // train for 100 iterations
         T loss_avg = 0;
@@ -56,9 +66,11 @@ namespace hvac
             for (size_t i = 0; i < DATASET_SIZE; i++)
             {
                 size_t idx = indices[i];
-                T x = dataset::ln_inputs[idx];
+                T x_raw = dataset::ln_inputs[idx];
+                T x = normalize(x_raw, input_min, input_max);
                 rlt::set(d_input_mlp, 0, 0, x);
-                T target = dataset::ln_targets[idx];
+                T target_raw = dataset::ln_targets[idx];
+                T target = normalize(target_raw, output_min, output_max);
                 rlt::forward(device, model, d_input_mlp, buffer, rng);
                 T output_value = get(model.output_layer.output, 0, 0);
                 T loss = (output_value - target) * (output_value - target); // simple MSE loss
@@ -68,7 +80,7 @@ namespace hvac
                 rlt::backward(device, model, d_input_mlp, d_output_mlp, buffer);
                 if (i % 100 == 0)
                 {
-                    printf("Sample %d, Input: %f, Target: %f, Output: %f, Loss: %f\n", i, x, target, output_value, loss);
+                    printf("Sample %d, Input (raw/norm): %f/%f, Target (raw/norm): %f/%f, Output: %f, Loss: %f\n", i, x_raw, x, target_raw, target, output_value, loss);
                 }
             }
 
@@ -85,5 +97,32 @@ namespace hvac
             TI j = rlt::random::uniform_int_distribution(device.random, (TI)0, i, rng);
             std::swap(indices[i], indices[j]);
         }
+    }
+
+    void HVACControler::compute_normalization_stats() {
+        // Compute min and max for inputs
+        input_min = dataset::ln_inputs[0];
+        input_max = dataset::ln_inputs[0];
+        output_min = dataset::ln_targets[0];
+        output_max = dataset::ln_targets[0];
+        
+        for (size_t i = 1; i < DATASET_SIZE; i++) {
+            if (dataset::ln_inputs[i] < input_min) input_min = dataset::ln_inputs[i];
+            if (dataset::ln_inputs[i] > input_max) input_max = dataset::ln_inputs[i];
+            if (dataset::ln_targets[i] < output_min) output_min = dataset::ln_targets[i];
+            if (dataset::ln_targets[i] > output_max) output_max = dataset::ln_targets[i];
+        }
+        
+        printf("Input range: [%f, %f]\n", input_min, input_max);
+        printf("Output range: [%f, %f]\n", output_min, output_max);
+    }
+
+    T HVACControler::normalize(T value, T min_val, T max_val) {
+        if (max_val == min_val) return 0.0f;
+        return (value - min_val) / (max_val - min_val);
+    }
+
+    T HVACControler::denormalize(T value, T min_val, T max_val) {
+        return value * (max_val - min_val) + min_val;
     }
 } // namespace hvac

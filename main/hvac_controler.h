@@ -69,6 +69,13 @@ namespace hvac
 
         TI indices[DATASET_SIZE];
         void shuffle();
+        
+        // Normalization
+        T input_min, input_max;
+        T output_min, output_max;
+        void compute_normalization_stats();
+        T normalize(T value, T min_val, T max_val);
+        T denormalize(T value, T min_val, T max_val);
     };
 } // namespace hvac
 

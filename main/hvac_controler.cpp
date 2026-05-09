@@ -33,6 +33,7 @@ namespace hvac
         rlt::malloc(device, d_input_mlp);
         rlt::malloc(device, d_output_mlp);
         for(TI i = 0; i < DATASET_SIZE; i++) indices[i] = i;
+        compute_normalization_stats();
     }
 
     float HVACControler::request(float env_status)

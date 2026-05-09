@@ -28,12 +28,12 @@ namespace hvac
     constexpr TI INPUT_DIM_MLP = 1;
     constexpr TI OUTPUT_DIM_MLP = 1;
     constexpr TI NUM_LAYERS = 3;
-    constexpr TI HIDDEN_DIM = 32;
+    constexpr TI HIDDEN_DIM = 48;
     constexpr TI BATCH_SIZE = 1;       // Since the controler is used in an online setting, the batch size is set to 1. However, if you want to use the controler in an offline setting, you can increase the batch size and modify the request function accordingly.
-    constexpr TI DATASET_SIZE = 500;
+    constexpr TI DATASET_SIZE = 200;
     constexpr size_t MAX_EPOCHS = 10000; // Safety limit to prevent infinite loops
     constexpr TI TRAINING_EPOCHS = 20; // Since the controler is used in an online setting, the batch size is set to 1. However, if you want to use the controler in an offline setting, you can increase the batch size and modify the request function accordingly.
-    constexpr T CONVERGENCE_THRESHOLD = 0.00001f;
+    constexpr T CONVERGENCE_THRESHOLD = 0.000005f;
 
     constexpr auto ACTIVATION_FUNCTION_MLP = rlt::nn::activation_functions::RELU;
     constexpr auto OUTPUT_ACTIVATION_FUNCTION_MLP = rlt::nn::activation_functions::IDENTITY;

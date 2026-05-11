@@ -99,7 +99,11 @@ namespace hvac
                 rlt::backward(device, model, d_input_mlp, d_output_mlp, buffer);
                 if (i % 100 == 0)
                 {
-                    printf("Sample %d, Target (raw/norm): %f/%f, Output: %f, Loss: %f\n", i, target_raw, target, output_value, loss);
+                    printf("Sample %d, raw=[%f, %f, %f, %f], norm=[%f, %f, %f, %f], target(raw/norm)=%f/%f, output=%f, loss=%f\n",
+                           (int)i,
+                           dataset::get_input(idx, 0), dataset::get_input(idx, 1), dataset::get_input(idx, 2), dataset::get_input(idx, 3),
+                           rlt::get(d_input_mlp, 0, 0), rlt::get(d_input_mlp, 0, 1), rlt::get(d_input_mlp, 0, 2), rlt::get(d_input_mlp, 0, 3),
+                           target_raw, target, output_value, loss);
                 }
             }
 

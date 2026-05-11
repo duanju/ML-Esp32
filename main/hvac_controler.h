@@ -14,13 +14,13 @@
 #include <rl_tools/nn/optimizers/adam/operations_generic.h>
 #include <rl_tools/numeric_types/policy.h>
 #include <rl_tools/nn_models/mlp/network.h>
-#include <data/zero_crossing_point_detection_dataset_01.h>
+#include "dataset_loader.h"
 
 namespace rlt = rl_tools;
 // add HVACControler in namespace hvac
 namespace hvac
 {
-    using DEV_SPEC_S3 = rlt::devices::DefaultESP32Specification<rlt::devices::esp32::Hardware::C3>;
+    using DEV_SPEC_S3 = rlt::devices::DefaultESP32Specification<rlt::devices::esp32::Hardware::S3>;
     using DEVICE = rlt::devices::ESP32<DEV_SPEC_S3>;
     using TI = typename DEVICE::index_t;
     using T = float;
@@ -29,7 +29,7 @@ namespace hvac
     constexpr TI INPUT_DIM_MLP = dataset::NUM_FEATURES;
     constexpr TI OUTPUT_DIM_MLP = 1;
     constexpr TI NUM_LAYERS = 3;
-    constexpr TI HIDDEN_DIM = 48;
+    constexpr TI HIDDEN_DIM = 32;
     constexpr TI BATCH_SIZE = 1;       // Since the controler is used in an online setting, the batch size is set to 1. However, if you want to use the controler in an offline setting, you can increase the batch size and modify the request function accordingly.
     constexpr TI DATASET_SIZE = dataset::NUM_SAMPLES;
     constexpr size_t MAX_EPOCHS = 10000; // Safety limit to prevent infinite loops
@@ -53,6 +53,7 @@ namespace hvac
     {
     public:
         HVACControler();
+        ~HVACControler();
         // Request control action based on 4-dimensional environment status
         // env_status: pointer to array of 4 input features
         float request(float env_status[INPUT_DIM_MLP]); // request control action based on 4D status
@@ -71,7 +72,7 @@ namespace hvac
         rlt::Matrix<rlt::matrix::Specification<T, TI, BATCH_SIZE, INPUT_DIM_MLP>> input_mlp, d_input_mlp;
         rlt::Matrix<rlt::matrix::Specification<T, TI, BATCH_SIZE, OUTPUT_DIM_MLP>> d_output_mlp;
 
-        TI indices[DATASET_SIZE];
+        TI* indices;
         void shuffle();
 
         // Normalization

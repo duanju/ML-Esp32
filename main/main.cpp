@@ -7,7 +7,7 @@
 #include "esp_timer.h"
 #include <inttypes.h>
 #include "hvac_controler.h"
-#include "data/zero_crossing_point_detection_dataset_01.h"
+#include "dataset_loader.h"
 
 static constexpr gpio_num_t BUTTON1_GPIO = GPIO_NUM_10; // replace this with your actual button 1 pin
 static constexpr gpio_num_t BUTTON2_GPIO = GPIO_NUM_0; // Boot button on many ESP32 boards, replace if needed
@@ -68,6 +68,7 @@ extern "C" void app_main(void)
 
     hvac::HVACControler controler;
 
+
     while (true)
     {
         int button = wait_for_button_press();
@@ -81,13 +82,19 @@ extern "C" void app_main(void)
         else if (button == 2)
         {
             uint32_t idx = esp_random() % hvac::DATASET_SIZE;
-            const float* random_input = dataset::inputs[idx];  // Get 4D input array from dataset (const)
+            float random_input[4] = {
+                dataset::get_input(idx, 0),
+                dataset::get_input(idx, 1),
+                dataset::get_input(idx, 2),
+                dataset::get_input(idx, 3)
+            };
             // record the total time taken for inference
             int64_t start_time = esp_timer_get_time();
-            float output = controler.request(const_cast<float*>(random_input));
+            float output = controler.request(random_input);
             int64_t end_time = esp_timer_get_time();
+            float target = dataset::get_target(idx);
             printf("Button2 pressed: random input idx=%" PRIu32 " input=[%f, %f, %f, %f] inferred output=%f target=%f (Time: %" PRId64 " us)\n",
-                   idx, random_input[0], random_input[1], random_input[2], random_input[3], output, dataset::targets[idx], end_time - start_time);
+                   idx, random_input[0], random_input[1], random_input[2], random_input[3], output, target, end_time - start_time);
         }
 
         vTaskDelay(pdMS_TO_TICKS(100));

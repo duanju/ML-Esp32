@@ -15,13 +15,14 @@
 #include <rl_tools/random/operations_generic.h>
 // #include <rl_tools/containers/tensor/tensor.h>
 #include "hvac_controler.h"
-#include "data/zero_crossing_point_detection_dataset_01.h"
+#include "dataset_loader.h"
 
 namespace hvac
 {
     // HVACControler constructor
     HVACControler::HVACControler()
     {
+        indices = new TI[DATASET_SIZE];
         rlt::malloc(device, model);
         rlt::malloc(device, optimizer);
         rlt::init_weights(device, model, rng); // recursively initializes all layers using kaiming initialization
@@ -35,6 +36,11 @@ namespace hvac
         for (TI i = 0; i < DATASET_SIZE; i++)
             indices[i] = i;
         compute_normalization_stats();
+    }
+
+    HVACControler::~HVACControler()
+    {
+        delete[] indices;
     }
 
     float HVACControler::request(float env_status[INPUT_DIM_MLP])
@@ -57,8 +63,6 @@ namespace hvac
 
     T HVACControler::update()
     {
-        // Compute normalization statistics on first call
-        compute_normalization_stats();
 
         // compute loss and gradients, then update model parameters using the optimizer
         // train until loss is less than 0.0001 or convergence (gap < 0.001)
@@ -78,11 +82,11 @@ namespace hvac
                 // Set all 4 input features with normalization
                 for (TI j = 0; j < INPUT_DIM_MLP; j++)
                 {
-                    T x_raw = dataset::inputs[idx][j];
+                    T x_raw = dataset::get_input(idx, j);
                     T x_normalized = normalize(x_raw, input_min[j], input_max[j]);
                     rlt::set(d_input_mlp, 0, j, x_normalized);
                 }
-                T target_raw = dataset::targets[idx];
+                T target_raw = dataset::get_target(idx);
                 T target = normalize(target_raw, output_min, output_max);
                 rlt::forward(device, model, d_input_mlp, buffer, rng);
                 T output_value = get(model.output_layer.output, 0, 0);
@@ -140,11 +144,11 @@ namespace hvac
         // Initialize min and max for each feature using first sample
         for (size_t j = 0; j < dataset::NUM_FEATURES; j++)
         {
-            input_min[j] = dataset::inputs[0][j];
-            input_max[j] = dataset::inputs[0][j];
+            input_min[j] = dataset::get_input(0, j);
+            input_max[j] = dataset::get_input(0, j);
         }
-        output_min = dataset::targets[0];
-        output_max = dataset::targets[0];
+        output_min = dataset::get_target(0);
+        output_max = dataset::get_target(0);
 
         // printf("Starting normalization stats computation for %d samples...\n", DATASET_SIZE);
 
@@ -160,7 +164,7 @@ namespace hvac
 
             for (size_t j = 0; j < dataset::NUM_FEATURES; j++)
             {
-                float val = dataset::inputs[i][j];
+                float val = dataset::get_input(i, j);
                 if (val < input_min[j])
                     input_min[j] = val;
                 if (val > input_max[j])
@@ -168,7 +172,7 @@ namespace hvac
             }
 
             // Compute output min/max
-            float target = dataset::targets[i];
+            float target = dataset::get_target(i);
             if (target < output_min)
                 output_min = target;
             if (target > output_max)

@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <rl_tools/random/operations_generic.h>
 // #include <rl_tools/containers/tensor/tensor.h>
+#include "esp_timer.h"
 #include "hvac_controler.h"
 #include "dataset_loader.h"
 
@@ -63,6 +64,7 @@ namespace hvac
 
     T HVACControler::update()
     {
+        int64_t start_time = esp_timer_get_time();
 
         // compute loss and gradients, then update model parameters using the optimizer
         // train until loss is less than 0.0001 or convergence (gap < 0.001)
@@ -119,6 +121,13 @@ namespace hvac
         {
             printf("Training stopped! Reached max epochs (%d) with loss: %f\n", MAX_EPOCHS, loss_avg);
         }
+
+        int64_t elapsed_us = esp_timer_get_time() - start_time;
+        int64_t elapsed_s = elapsed_us / 1000000;
+        int h = elapsed_s / 3600;
+        int m = (elapsed_s % 3600) / 60;
+        int s = elapsed_s % 60;
+        printf("Training time: %02d:%02d:%02d\n", h, m, s);
 
         return loss_avg;
     }
@@ -206,6 +215,7 @@ namespace hvac
     }
     void HVACControler::evaluate_test()
     {
+        int64_t start_time = esp_timer_get_time();
         printf("Evaluating on test set (%d samples)...\n", TEST_SIZE);
         T total_loss = 0;
         T total_abs_error = 0;
@@ -232,10 +242,11 @@ namespace hvac
             if (pred == label)
                 correct++;
         }
+        int64_t elapsed_us = esp_timer_get_time() - start_time;
         T mse = total_loss / TEST_SIZE;
         T mae = total_abs_error / TEST_SIZE;
         T accuracy = (T)correct / TEST_SIZE * 100.0f;
-        printf("Test results: MSE=%f, MAE=%f (denormalized), Accuracy=%d/%d (%.1f%%)\n",
-               mse, mae, (int)correct, (int)TEST_SIZE, accuracy);
+        printf("Test results: MSE=%f, MAE=%f (denormalized), Accuracy=%d/%d (%.1f%%), Time=%lld us (%lld ms)\n",
+               mse, mae, (int)correct, (int)TEST_SIZE, accuracy, (long long)elapsed_us, (long long)elapsed_us / 1000);
     }
 } // namespace hvac

@@ -37,7 +37,7 @@ namespace hvac
     constexpr T CONVERGENCE_THRESHOLD = 0.000005f;
 
     constexpr auto ACTIVATION_FUNCTION_MLP = rlt::nn::activation_functions::RELU;
-    constexpr auto OUTPUT_ACTIVATION_FUNCTION_MLP = rlt::nn::activation_functions::IDENTITY;
+    constexpr auto OUTPUT_ACTIVATION_FUNCTION_MLP = rlt::nn::activation_functions::SIGMOID;
     using MODEL_CONFIG = rlt::nn_models::mlp::Configuration<TYPE_POLICY, TI, OUTPUT_DIM_MLP, NUM_LAYERS, HIDDEN_DIM, ACTIVATION_FUNCTION_MLP, OUTPUT_ACTIVATION_FUNCTION_MLP>;
 
     using PARAMETER_TYPE = rlt::nn::parameters::Adam;

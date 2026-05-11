@@ -6,6 +6,9 @@ namespace dataset {
 
 constexpr int NUM_SAMPLES = 4935;
 constexpr int NUM_FEATURES = 4;
+constexpr int TRAIN_SIZE = NUM_SAMPLES * 9 / 10;
+constexpr int TEST_SIZE = NUM_SAMPLES - TRAIN_SIZE;
+constexpr int TEST_START = TRAIN_SIZE;
 
 // Embedded float array stored in flash (RODATA section).
 // Layout: inputs[NUM_SAMPLES][NUM_FEATURES] (row-major) followed by targets[NUM_SAMPLES].

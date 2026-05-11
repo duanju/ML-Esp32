@@ -31,7 +31,8 @@ namespace hvac
     constexpr TI NUM_LAYERS = 3;
     constexpr TI HIDDEN_DIM = 32;
     constexpr TI BATCH_SIZE = 1;       // Since the controler is used in an online setting, the batch size is set to 1. However, if you want to use the controler in an offline setting, you can increase the batch size and modify the request function accordingly.
-    constexpr TI DATASET_SIZE = dataset::NUM_SAMPLES;
+    constexpr TI TRAIN_SIZE = dataset::TRAIN_SIZE;
+    constexpr TI TEST_SIZE = dataset::TEST_SIZE;
     constexpr size_t MAX_EPOCHS = 10000; // Safety limit to prevent infinite loops
     constexpr TI TRAINING_EPOCHS = 20; // Since the controler is used in an online setting, the batch size is set to 1. However, if you want to use the controler in an offline setting, you can increase the batch size and modify the request function accordingly.
     constexpr T CONVERGENCE_THRESHOLD = 0.000005f;
@@ -58,6 +59,7 @@ namespace hvac
         // env_status: pointer to array of 4 input features
         float request(float env_status[INPUT_DIM_MLP]); // request control action based on 4D status
         T update();
+        void evaluate_test();
 
     private:
         // internal state and methods for the controler

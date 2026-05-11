@@ -22,7 +22,7 @@ namespace hvac
     // HVACControler constructor
     HVACControler::HVACControler()
     {
-        indices = new TI[DATASET_SIZE];
+        indices = new TI[TRAIN_SIZE];
         rlt::malloc(device, model);
         rlt::malloc(device, optimizer);
         rlt::init_weights(device, model, rng); // recursively initializes all layers using kaiming initialization
@@ -33,7 +33,7 @@ namespace hvac
         rlt::malloc(device, input_mlp);
         rlt::malloc(device, d_input_mlp);
         rlt::malloc(device, d_output_mlp);
-        for (TI i = 0; i < DATASET_SIZE; i++)
+        for (TI i = 0; i < TRAIN_SIZE; i++)
             indices[i] = i;
         compute_normalization_stats();
     }
@@ -76,7 +76,7 @@ namespace hvac
             T loss_total = 0;
             rlt::zero_gradient(device, model);
             shuffle();
-            for (size_t i = 0; i < DATASET_SIZE; i++)
+            for (size_t i = 0; i < TRAIN_SIZE; i++)
             {
                 size_t idx = indices[i];
                 // Set all 4 input features with normalization
@@ -92,7 +92,7 @@ namespace hvac
                 T output_value = get(model.output_layer.output, 0, 0);
                 T loss = (output_value - target) * (output_value - target); // simple MSE loss
                 loss_total += loss;
-                T loss_gradient = 2.0f * (output_value - target) / DATASET_SIZE; // gradient of MSE loss w.r.t. output, averaged over the batch
+                T loss_gradient = 2.0f * (output_value - target) / TRAIN_SIZE; // gradient of MSE loss w.r.t. output, averaged over the batch
                 rlt::set(d_output_mlp, 0, 0, loss_gradient);
                 rlt::backward(device, model, d_input_mlp, d_output_mlp, buffer);
                 if (i % 100 == 0)
@@ -102,7 +102,7 @@ namespace hvac
             }
 
             rlt::step(device, optimizer, model);
-            loss_avg = loss_total / DATASET_SIZE;
+            loss_avg = loss_total / TRAIN_SIZE;
 
             printf("Epoch %d, Loss: %f, Gap: %f\n", epoch, loss_avg, (prev_loss_avg - loss_avg));
             epoch++;
@@ -125,7 +125,7 @@ namespace hvac
 
     void HVACControler::shuffle()
     {
-        for (TI i = DATASET_SIZE - 1; i > 0; --i)
+        for (TI i = TRAIN_SIZE - 1; i > 0; --i)
         {
             TI j = rlt::random::uniform_int_distribution(device.random, (TI)0, i, rng);
             std::swap(indices[i], indices[j]);
@@ -135,9 +135,9 @@ namespace hvac
     void HVACControler::compute_normalization_stats()
     {
         // Verify dataset constants match before processing
-        if (DATASET_SIZE == 0 || dataset::NUM_FEATURES == 0)
+        if (dataset::NUM_SAMPLES == 0 || dataset::NUM_FEATURES == 0)
         {
-            printf("ERROR: Invalid dataset size (NUM_SAMPLES=%d, NUM_FEATURES=%d)\n", DATASET_SIZE, dataset::NUM_FEATURES);
+            printf("ERROR: Invalid dataset size (NUM_SAMPLES=%d, NUM_FEATURES=%d)\n", dataset::NUM_SAMPLES, dataset::NUM_FEATURES);
             return;
         }
 
@@ -150,10 +150,10 @@ namespace hvac
         output_min = dataset::get_target(0);
         output_max = dataset::get_target(0);
 
-        // printf("Starting normalization stats computation for %d samples...\n", DATASET_SIZE);
+        // printf("Starting normalization stats computation for %d samples...\n", TRAIN_SIZE);
 
         // Compute min and max for each feature by iterating through all samples
-        for (size_t i = 1; i < DATASET_SIZE; i++)
+        for (size_t i = 1; i < dataset::NUM_SAMPLES; i++)
         {
             // Bounds check for safety
             if (i >= dataset::NUM_SAMPLES)
@@ -181,7 +181,7 @@ namespace hvac
             // Print progress every 1000 samples
             if (i % 1000 == 0)
             {
-                printf("Processing sample %zu/%d...\n", i, DATASET_SIZE);
+                printf("Processing sample %zu/%d...\n", i, dataset::NUM_SAMPLES);
             }
         }
 
@@ -203,5 +203,39 @@ namespace hvac
     T HVACControler::denormalize(T value, T min_val, T max_val)
     {
         return value * (max_val - min_val) + min_val;
+    }
+    void HVACControler::evaluate_test()
+    {
+        printf("Evaluating on test set (%d samples)...\n", TEST_SIZE);
+        T total_loss = 0;
+        T total_abs_error = 0;
+        TI correct = 0;
+        for (TI i = 0; i < TEST_SIZE; i++)
+        {
+            TI idx = dataset::TEST_START + i;
+            for (TI j = 0; j < INPUT_DIM_MLP; j++)
+            {
+                T x_raw = dataset::get_input(idx, j);
+                T x_normalized = normalize(x_raw, input_min[j], input_max[j]);
+                rlt::set(input_mlp, 0, j, x_normalized);
+            }
+            T target_raw = dataset::get_target(idx);
+            T target = normalize(target_raw, output_min, output_max);
+            rlt::forward(device, model, input_mlp, buffer, rng);
+            T output_value = get(model.output_layer.output, 0, 0);
+            T loss = (output_value - target) * (output_value - target);
+            total_loss += loss;
+            T output_denorm = denormalize(output_value, output_min, output_max);
+            total_abs_error += std::abs(output_denorm - target_raw);
+            TI pred = output_value > 0.5f ? 1 : 0;
+            TI label = target > 0.5f ? 1 : 0;
+            if (pred == label)
+                correct++;
+        }
+        T mse = total_loss / TEST_SIZE;
+        T mae = total_abs_error / TEST_SIZE;
+        T accuracy = (T)correct / TEST_SIZE * 100.0f;
+        printf("Test results: MSE=%f, MAE=%f (denormalized), Accuracy=%d/%d (%.1f%%)\n",
+               mse, mae, (int)correct, (int)TEST_SIZE, accuracy);
     }
 } // namespace hvac

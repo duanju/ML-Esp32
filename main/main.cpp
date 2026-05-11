@@ -63,7 +63,7 @@ extern "C" void app_main(void)
     gpio_config(&io_conf);
 
     printf("Button1 GPIO=%d -> train model\n", BUTTON1_GPIO);
-    printf("Button2 GPIO=%d -> random inference\n", BUTTON2_GPIO);
+    printf("Button2 GPIO=%d -> test evaluation\n", BUTTON2_GPIO);
     printf("Press a button to begin.\n");
 
     hvac::HVACControler controler;
@@ -81,20 +81,8 @@ extern "C" void app_main(void)
         }
         else if (button == 2)
         {
-            uint32_t idx = esp_random() % hvac::DATASET_SIZE;
-            float random_input[4] = {
-                dataset::get_input(idx, 0),
-                dataset::get_input(idx, 1),
-                dataset::get_input(idx, 2),
-                dataset::get_input(idx, 3)
-            };
-            // record the total time taken for inference
-            int64_t start_time = esp_timer_get_time();
-            float output = controler.request(random_input);
-            int64_t end_time = esp_timer_get_time();
-            float target = dataset::get_target(idx);
-            printf("Button2 pressed: random input idx=%" PRIu32 " input=[%f, %f, %f, %f] inferred output=%f target=%f (Time: %" PRId64 " us)\n",
-                   idx, random_input[0], random_input[1], random_input[2], random_input[3], output, target, end_time - start_time);
+            printf("Button2 pressed: evaluating on test set...\n");
+            controler.evaluate_test();
         }
 
         vTaskDelay(pdMS_TO_TICKS(100));

@@ -28,8 +28,8 @@ namespace hvac
 
     constexpr TI INPUT_DIM_MLP = dataset::NUM_FEATURES;
     constexpr TI OUTPUT_DIM_MLP = 1;
-    constexpr TI NUM_LAYERS = 6;
-    constexpr TI HIDDEN_DIM = 32;
+    constexpr TI NUM_LAYERS = 4;
+    constexpr TI HIDDEN_DIM = 64;
     constexpr TI BATCH_SIZE = 1;       // Since the controler is used in an online setting, the batch size is set to 1. However, if you want to use the controler in an offline setting, you can increase the batch size and modify the request function accordingly.
     constexpr TI TRAIN_SIZE = dataset::TRAIN_SIZE;
     constexpr TI TEST_SIZE = dataset::TEST_SIZE;

@@ -12,8 +12,8 @@
 #include <rl_tools/nn/optimizers/adam/operations_generic.h>
 
 #include <algorithm>
+#include <cmath>
 #include <rl_tools/random/operations_generic.h>
-// #include <rl_tools/containers/tensor/tensor.h>
 #include "esp_timer.h"
 #include "hvac_controler.h"
 #include "dataset_loader.h"
@@ -23,20 +23,18 @@ namespace hvac
     // HVACControler constructor
     HVACControler::HVACControler()
     {
-        indices = new TI[TRAIN_SIZE];
         rlt::malloc(device, model);
         rlt::malloc(device, optimizer);
-        rlt::init_weights(device, model, rng); // recursively initializes all layers using kaiming initialization
+        rlt::init_weights(device, model, rng);
         rlt::init(device, optimizer);
-        rlt::zero_gradient(device, model); // recursively zeros all gradients in the layers
+        rlt::zero_gradient(device, model);
         rlt::reset_optimizer_state(device, optimizer, model);
         rlt::malloc(device, buffer);
         rlt::malloc(device, input_mlp);
         rlt::malloc(device, d_input_mlp);
         rlt::malloc(device, d_output_mlp);
-        for (TI i = 0; i < TRAIN_SIZE; i++)
-            indices[i] = i;
         compute_normalization_stats();
+        build_balanced_indices();
     }
 
     HVACControler::~HVACControler()
@@ -44,30 +42,52 @@ namespace hvac
         delete[] indices;
     }
 
+    void HVACControler::build_balanced_indices()
+    {
+        TI minority_count = 0;
+        TI majority_count = 0;
+        for (TI i = 0; i < TRAIN_SIZE; i++)
+        {
+            if (dataset::get_target(i) > 0.5f)
+                minority_count++;
+            else
+                majority_count++;
+        }
+        TI repeat_factor = majority_count / minority_count;
+        TI remainder = majority_count % minority_count;
+        balanced_size = majority_count + minority_count * repeat_factor;
+        indices = new TI[balanced_size];
+        TI w = 0;
+        for (TI i = 0; i < TRAIN_SIZE; i++)
+        {
+            TI extra = (dataset::get_target(i) > 0.5f) ? repeat_factor - 1 + (remainder > 0 ? 1 : 0) : 0;
+            if (dataset::get_target(i) > 0.5f && remainder > 0)
+                remainder--;
+            for (TI r = 0; r < extra + 1; r++)
+                indices[w++] = i;
+        }
+        printf("Training set: majority=%d, minority=%d, repeat_factor=%d, balanced_size=%d\n",
+               (int)majority_count, (int)minority_count, (int)repeat_factor, (int)balanced_size);
+    }
+
     float HVACControler::request(float env_status[INPUT_DIM_MLP])
     {
-        // Normalize 4D input
+        // Z-score normalize 4D input
         for (TI i = 0; i < INPUT_DIM_MLP; i++)
         {
-            T normalized_value = normalize(env_status[i], input_min[i], input_max[i]);
+            T normalized_value = normalize(env_status[i], input_mean[i], input_std[i]);
             rlt::set(input_mlp, 0, i, normalized_value);
         }
 
-        // Forward pass
+        // Forward pass — returns probability of class 1 (sigmoid output in [0,1])
         rlt::forward(device, model, input_mlp, buffer, rng);
-        T normalized_output = rlt::get(model.output_layer.output, 0, 0);
-
-        // Denormalize output back to original scale
-        T output_value = denormalize(normalized_output, output_min, output_max);
-        return output_value;
+        return rlt::get(model.output_layer.output, 0, 0);
     }
 
     T HVACControler::update()
     {
         int64_t start_time = esp_timer_get_time();
 
-        // compute loss and gradients, then update model parameters using the optimizer
-        // train until loss is less than 0.0001 or convergence (gap < 0.001)
         T loss_avg = 1.0f;
         T prev_loss_avg = 1.0f;
         size_t epoch = 0;
@@ -78,37 +98,51 @@ namespace hvac
             T loss_total = 0;
             rlt::zero_gradient(device, model);
             shuffle();
-            for (size_t i = 0; i < TRAIN_SIZE; i++)
+            T batch_loss = 0;
+
+            for (size_t i = 0; i < balanced_size; i++)
             {
                 size_t idx = indices[i];
-                // Set all 4 input features with normalization
+                // Set all 4 input features with Z-score normalization
                 for (TI j = 0; j < INPUT_DIM_MLP; j++)
                 {
                     T x_raw = dataset::get_input(idx, j);
-                    T x_normalized = normalize(x_raw, input_min[j], input_max[j]);
+                    T x_normalized = normalize(x_raw, input_mean[j], input_std[j]);
                     rlt::set(d_input_mlp, 0, j, x_normalized);
                 }
-                T target_raw = dataset::get_target(idx);
-                T target = normalize(target_raw, output_min, output_max);
+                T target = dataset::get_target(idx); // Keep target as raw 0/1 for BCE
                 rlt::forward(device, model, d_input_mlp, buffer, rng);
                 T output_value = get(model.output_layer.output, 0, 0);
-                T loss = (output_value - target) * (output_value - target); // simple MSE loss
+
+                // BCE loss with numerical stability (target is raw 0/1, output is sigmoid)
+                T y_clamped = std::max(std::min(output_value, 1.0f - BCE_EPSILON), BCE_EPSILON);
+                T loss = -(target * std::log(y_clamped) + (1.0f - target) * std::log(1.0f - y_clamped));
                 loss_total += loss;
-                T loss_gradient = 2.0f * (output_value - target) / TRAIN_SIZE; // gradient of MSE loss w.r.t. output, averaged over the batch
-                rlt::set(d_output_mlp, 0, 0, loss_gradient);
+                batch_loss += loss;
+
+                // Gradient of BCE w.r.t. post-sigmoid output, averaged over accumulation steps
+                // dL/dy = (y - t) / (y*(1-y) + eps), scaled by 1/N for mean loss over accumulation window
+                T dL_dy = (output_value - target) / (output_value * (1.0f - output_value) + BCE_EPSILON) / (T)GRADIENT_ACCUMULATION_STEPS;
+                rlt::set(d_output_mlp, 0, 0, dL_dy);
                 rlt::backward(device, model, d_input_mlp, d_output_mlp, buffer);
-                if (i % 100 == 0)
+
+                // Step optimizer every GRADIENT_ACCUMULATION_STEPS samples
+                if ((i + 1) % GRADIENT_ACCUMULATION_STEPS == 0)
                 {
-                    printf("Sample %d, raw=[%f, %f, %f, %f], norm=[%f, %f, %f, %f], target(raw/norm)=%f/%f, output=%f, loss=%f\n",
-                           (int)i,
-                           dataset::get_input(idx, 0), dataset::get_input(idx, 1), dataset::get_input(idx, 2), dataset::get_input(idx, 3),
-                           rlt::get(d_input_mlp, 0, 0), rlt::get(d_input_mlp, 0, 1), rlt::get(d_input_mlp, 0, 2), rlt::get(d_input_mlp, 0, 3),
-                           target_raw, target, output_value, loss);
+                    rlt::step(device, optimizer, model);
+                    rlt::zero_gradient(device, model);
+                    printf("Step %d, avg batch loss: %f\n", (int)(i + 1), batch_loss / GRADIENT_ACCUMULATION_STEPS);
+                    batch_loss = 0;
                 }
             }
 
-            rlt::step(device, optimizer, model);
-            loss_avg = loss_total / TRAIN_SIZE;
+            // Handle remaining gradients if balanced_size is not divisible by GRADIENT_ACCUMULATION_STEPS
+            if (balanced_size % GRADIENT_ACCUMULATION_STEPS != 0)
+            {
+                rlt::step(device, optimizer, model);
+            }
+
+            loss_avg = loss_total / balanced_size;
 
             printf("Epoch %d, Loss: %f, Gap: %f\n", epoch, loss_avg, (prev_loss_avg - loss_avg));
             epoch++;
@@ -138,7 +172,7 @@ namespace hvac
 
     void HVACControler::shuffle()
     {
-        for (TI i = TRAIN_SIZE - 1; i > 0; --i)
+        for (TI i = balanced_size - 1; i > 0; --i)
         {
             TI j = rlt::random::uniform_int_distribution(device.random, (TI)0, i, rng);
             std::swap(indices[i], indices[j]);
@@ -154,69 +188,70 @@ namespace hvac
             return;
         }
 
-        // Initialize min and max for each feature using first sample
+        // Compute mean for each feature using TRAIN_SIZE samples
         for (size_t j = 0; j < dataset::NUM_FEATURES; j++)
         {
-            input_min[j] = dataset::get_input(0, j);
-            input_max[j] = dataset::get_input(0, j);
+            input_mean[j] = 0;
         }
-        output_min = dataset::get_target(0);
-        output_max = dataset::get_target(0);
+        output_mean = 0;
 
-        // printf("Starting normalization stats computation for %d samples...\n", TRAIN_SIZE);
-
-        // Compute min and max for each feature by iterating through all samples
-        for (size_t i = 1; i < dataset::NUM_SAMPLES; i++)
+        for (size_t i = 0; i < TRAIN_SIZE; i++)
         {
-            // Bounds check for safety
-            if (i >= dataset::NUM_SAMPLES)
-            {
-                printf("WARNING: Index i=%zu >= NUM_SAMPLES=%d, stopping\n", i, dataset::NUM_SAMPLES);
-                break;
-            }
-
             for (size_t j = 0; j < dataset::NUM_FEATURES; j++)
             {
-                float val = dataset::get_input(i, j);
-                if (val < input_min[j])
-                    input_min[j] = val;
-                if (val > input_max[j])
-                    input_max[j] = val;
+                input_mean[j] += dataset::get_input(i, j);
             }
-
-            // Compute output min/max
-            float target = dataset::get_target(i);
-            if (target < output_min)
-                output_min = target;
-            if (target > output_max)
-                output_max = target;
-
-            // Print progress every 1000 samples
-            if (i % 1000 == 0)
-            {
-                printf("Processing sample %zu/%d...\n", i, dataset::NUM_SAMPLES);
-            }
+            output_mean += dataset::get_target(i);
         }
-
-        // Print normalization stats for each input feature
         for (size_t j = 0; j < dataset::NUM_FEATURES; j++)
         {
-            printf("Input feature %zu range: [%f, %f]\n", j, input_min[j], input_max[j]);
+            input_mean[j] /= TRAIN_SIZE;
         }
-        printf("Output range: [%f, %f]\n", output_min, output_max);
+        output_mean /= TRAIN_SIZE;
+
+        // Compute standard deviation
+        for (size_t j = 0; j < dataset::NUM_FEATURES; j++)
+        {
+            input_std[j] = 0;
+        }
+        output_std = 0;
+
+        for (size_t i = 0; i < TRAIN_SIZE; i++)
+        {
+            for (size_t j = 0; j < dataset::NUM_FEATURES; j++)
+            {
+                T diff = dataset::get_input(i, j) - input_mean[j];
+                input_std[j] += diff * diff;
+            }
+            T diff = dataset::get_target(i) - output_mean;
+            output_std += diff * diff;
+        }
+        for (size_t j = 0; j < dataset::NUM_FEATURES; j++)
+        {
+            input_std[j] = std::sqrt(input_std[j] / (TRAIN_SIZE - 1));
+        }
+        output_std = std::sqrt(output_std / (TRAIN_SIZE - 1));
+
+        // Print normalization stats
+        for (size_t j = 0; j < dataset::NUM_FEATURES; j++)
+        {
+            printf("Input feature %zu: mean=%f, std=%f\n", j, input_mean[j], input_std[j]);
+        }
+        printf("Output: mean=%f, std=%f\n", output_mean, output_std);
     }
 
-    T HVACControler::normalize(T value, T min_val, T max_val)
+    T HVACControler::normalize(T value, T mean, T std)
     {
-        if (max_val == min_val)
+        if (std == 0.0f)
             return 0.0f;
-        return (value - min_val) / (max_val - min_val);
+        return (value - mean) / std;
     }
 
-    T HVACControler::denormalize(T value, T min_val, T max_val)
+    T HVACControler::denormalize(T value, T mean, T std)
     {
-        return value * (max_val - min_val) + min_val;
+        return value * std + mean;
     }
+
     void HVACControler::evaluate_test()
     {
         int64_t start_time = esp_timer_get_time();
@@ -230,27 +265,29 @@ namespace hvac
             for (TI j = 0; j < INPUT_DIM_MLP; j++)
             {
                 T x_raw = dataset::get_input(idx, j);
-                T x_normalized = normalize(x_raw, input_min[j], input_max[j]);
+                T x_normalized = normalize(x_raw, input_mean[j], input_std[j]);
                 rlt::set(input_mlp, 0, j, x_normalized);
             }
-            T target_raw = dataset::get_target(idx);
-            T target = normalize(target_raw, output_min, output_max);
+            T target = dataset::get_target(idx); // raw 0/1, no normalization needed
             rlt::forward(device, model, input_mlp, buffer, rng);
             T output_value = get(model.output_layer.output, 0, 0);
-            T loss = (output_value - target) * (output_value - target);
+
+            // BCE loss for evaluation consistency
+            T y_clamped = std::max(std::min(output_value, 1.0f - BCE_EPSILON), BCE_EPSILON);
+            T loss = -(target * std::log(y_clamped) + (1.0f - target) * std::log(1.0f - y_clamped));
             total_loss += loss;
-            T output_denorm = denormalize(output_value, output_min, output_max);
-            total_abs_error += std::abs(output_denorm - target_raw);
+
+            total_abs_error += std::abs(output_value - target);
             TI pred = output_value > 0.5f ? 1 : 0;
             TI label = target > 0.5f ? 1 : 0;
             if (pred == label)
                 correct++;
         }
         int64_t elapsed_us = esp_timer_get_time() - start_time;
-        T mse = total_loss / TEST_SIZE;
+        T avg_loss = total_loss / TEST_SIZE;
         T mae = total_abs_error / TEST_SIZE;
         T accuracy = (T)correct / TEST_SIZE * 100.0f;
-        printf("Test results: MSE=%f, MAE=%f (denormalized), Accuracy=%d/%d (%.1f%%), Time=%lld us (%lld ms)\n",
-               mse, mae, (int)correct, (int)TEST_SIZE, accuracy, (long long)elapsed_us, (long long)elapsed_us / 1000);
+        printf("Test results: BCE=%f, MAE=%f, Accuracy=%d/%d (%.1f%%), Time=%lld us (%lld ms)\n",
+               avg_loss, mae, (int)correct, (int)TEST_SIZE, accuracy, (long long)elapsed_us, (long long)elapsed_us / 1000);
     }
 } // namespace hvac

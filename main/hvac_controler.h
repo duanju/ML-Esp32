@@ -29,15 +29,16 @@ namespace hvac
     constexpr TI INPUT_DIM_MLP = dataset::NUM_FEATURES;
     constexpr TI OUTPUT_DIM_MLP = 1;
     constexpr TI NUM_LAYERS = 3;
-    constexpr TI HIDDEN_DIM = 32;
+    constexpr TI HIDDEN_DIM = 128;
     constexpr TI BATCH_SIZE = 1;       // Since the controler is used in an online setting, the batch size is set to 1. However, if you want to use the controler in an offline setting, you can increase the batch size and modify the request function accordingly.
     constexpr TI TRAIN_SIZE = dataset::TRAIN_SIZE;
     constexpr TI TEST_SIZE = dataset::TEST_SIZE;
     constexpr size_t MAX_EPOCHS = 10000; // Safety limit to prevent infinite loops
-    constexpr TI TRAINING_EPOCHS = 20; // Since the controler is used in an online setting, the batch size is set to 1. However, if you want to use the controler in an offline setting, you can increase the batch size and modify the request function accordingly.
-    constexpr T CONVERGENCE_THRESHOLD = 0.000005f;
+    constexpr TI GRADIENT_ACCUMULATION_STEPS = 64; // Number of samples to accumulate gradients over before calling step()
+    constexpr T BCE_EPSILON = 1e-7f;
+    constexpr T CONVERGENCE_THRESHOLD = 0.0001f;
 
-    constexpr auto ACTIVATION_FUNCTION_MLP = rlt::nn::activation_functions::RELU;
+    constexpr auto ACTIVATION_FUNCTION_MLP = rlt::nn::activation_functions::GELU;
     constexpr auto OUTPUT_ACTIVATION_FUNCTION_MLP = rlt::nn::activation_functions::SIGMOID;
     using MODEL_CONFIG = rlt::nn_models::mlp::Configuration<TYPE_POLICY, TI, OUTPUT_DIM_MLP, NUM_LAYERS, HIDDEN_DIM, ACTIVATION_FUNCTION_MLP, OUTPUT_ACTIVATION_FUNCTION_MLP>;
 
@@ -75,14 +76,16 @@ namespace hvac
         rlt::Matrix<rlt::matrix::Specification<T, TI, BATCH_SIZE, OUTPUT_DIM_MLP>> d_output_mlp;
 
         TI* indices;
+        TI balanced_size;
         void shuffle();
 
-        // Normalization
-        T input_min[INPUT_DIM_MLP], input_max[INPUT_DIM_MLP];
-        T output_min, output_max;
+        // Z-score normalization parameters
+        T input_mean[INPUT_DIM_MLP], input_std[INPUT_DIM_MLP];
+        T output_mean, output_std;
         void compute_normalization_stats();
-        T normalize(T value, T min_val, T max_val);
-        T denormalize(T value, T min_val, T max_val);
+        void build_balanced_indices();
+        T normalize(T value, T mean, T std);
+        T denormalize(T value, T mean, T std);
     };
 } // namespace hvac
 

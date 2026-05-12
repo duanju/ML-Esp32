@@ -28,15 +28,16 @@ namespace hvac
 
     constexpr TI INPUT_DIM_MLP = dataset::NUM_FEATURES;
     constexpr TI OUTPUT_DIM_MLP = 1;
-    constexpr TI NUM_LAYERS = 3;
-    constexpr TI HIDDEN_DIM = 128;
+    constexpr TI NUM_LAYERS = 6;
+    constexpr TI HIDDEN_DIM = 32;
     constexpr TI BATCH_SIZE = 1;       // Since the controler is used in an online setting, the batch size is set to 1. However, if you want to use the controler in an offline setting, you can increase the batch size and modify the request function accordingly.
     constexpr TI TRAIN_SIZE = dataset::TRAIN_SIZE;
     constexpr TI TEST_SIZE = dataset::TEST_SIZE;
     constexpr size_t MAX_EPOCHS = 10000; // Safety limit to prevent infinite loops
     constexpr TI GRADIENT_ACCUMULATION_STEPS = 64; // Number of samples to accumulate gradients over before calling step()
     constexpr T BCE_EPSILON = 1e-7f;
-    constexpr T CONVERGENCE_THRESHOLD = 0.0001f;
+    constexpr T CONVERGENCE_THRESHOLD = 0.00001f;
+    constexpr T POS_WEIGHT = 6.0f; // Majority/minority ratio for class-weighted BCE
 
     constexpr auto ACTIVATION_FUNCTION_MLP = rlt::nn::activation_functions::GELU;
     constexpr auto OUTPUT_ACTIVATION_FUNCTION_MLP = rlt::nn::activation_functions::SIGMOID;
@@ -76,14 +77,12 @@ namespace hvac
         rlt::Matrix<rlt::matrix::Specification<T, TI, BATCH_SIZE, OUTPUT_DIM_MLP>> d_output_mlp;
 
         TI* indices;
-        TI balanced_size;
         void shuffle();
 
         // Z-score normalization parameters
         T input_mean[INPUT_DIM_MLP], input_std[INPUT_DIM_MLP];
         T output_mean, output_std;
         void compute_normalization_stats();
-        void build_balanced_indices();
         T normalize(T value, T mean, T std);
         T denormalize(T value, T mean, T std);
     };

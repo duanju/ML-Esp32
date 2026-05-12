@@ -34,7 +34,10 @@ namespace hvac
         rlt::malloc(device, d_input_mlp);
         rlt::malloc(device, d_output_mlp);
         compute_normalization_stats();
-        build_balanced_indices();
+        // Simple sequential indices, shuffled each epoch
+        indices = new TI[TRAIN_SIZE];
+        for (TI i = 0; i < TRAIN_SIZE; i++)
+            indices[i] = i;
     }
 
     HVACControler::~HVACControler()
@@ -42,33 +45,6 @@ namespace hvac
         delete[] indices;
     }
 
-    void HVACControler::build_balanced_indices()
-    {
-        TI minority_count = 0;
-        TI majority_count = 0;
-        for (TI i = 0; i < TRAIN_SIZE; i++)
-        {
-            if (dataset::get_target(i) > 0.5f)
-                minority_count++;
-            else
-                majority_count++;
-        }
-        TI repeat_factor = majority_count / minority_count;
-        TI remainder = majority_count % minority_count;
-        balanced_size = majority_count + minority_count * repeat_factor;
-        indices = new TI[balanced_size];
-        TI w = 0;
-        for (TI i = 0; i < TRAIN_SIZE; i++)
-        {
-            TI extra = (dataset::get_target(i) > 0.5f) ? repeat_factor - 1 + (remainder > 0 ? 1 : 0) : 0;
-            if (dataset::get_target(i) > 0.5f && remainder > 0)
-                remainder--;
-            for (TI r = 0; r < extra + 1; r++)
-                indices[w++] = i;
-        }
-        printf("Training set: majority=%d, minority=%d, repeat_factor=%d, balanced_size=%d\n",
-               (int)majority_count, (int)minority_count, (int)repeat_factor, (int)balanced_size);
-    }
 
     float HVACControler::request(float env_status[INPUT_DIM_MLP])
     {
@@ -100,7 +76,7 @@ namespace hvac
             shuffle();
             T batch_loss = 0;
 
-            for (size_t i = 0; i < balanced_size; i++)
+            for (size_t i = 0; i < TRAIN_SIZE; i++)
             {
                 size_t idx = indices[i];
                 // Set all 4 input features with Z-score normalization
@@ -114,15 +90,16 @@ namespace hvac
                 rlt::forward(device, model, d_input_mlp, buffer, rng);
                 T output_value = get(model.output_layer.output, 0, 0);
 
-                // BCE loss with numerical stability (target is raw 0/1, output is sigmoid)
+                // Class-weighted BCE: minority class (target=1) gets POS_WEIGHT penalty
+                T weight = target * POS_WEIGHT + (1.0f - target) * 1.0f;
                 T y_clamped = std::max(std::min(output_value, 1.0f - BCE_EPSILON), BCE_EPSILON);
-                T loss = -(target * std::log(y_clamped) + (1.0f - target) * std::log(1.0f - y_clamped));
+                T loss = -weight * (target * std::log(y_clamped) + (1.0f - target) * std::log(1.0f - y_clamped));
                 loss_total += loss;
                 batch_loss += loss;
 
-                // Gradient of BCE w.r.t. post-sigmoid output, averaged over accumulation steps
-                // dL/dy = (y - t) / (y*(1-y) + eps), scaled by 1/N for mean loss over accumulation window
-                T dL_dy = (output_value - target) / (output_value * (1.0f - output_value) + BCE_EPSILON) / (T)GRADIENT_ACCUMULATION_STEPS;
+                // Gradient of weighted BCE w.r.t. post-sigmoid output
+                // dL/dy = weight * (y - t) / (y*(1-y) + eps), scaled by 1/N for mean loss over accumulation window
+                T dL_dy = weight * (output_value - target) / (output_value * (1.0f - output_value) + BCE_EPSILON) / (T)GRADIENT_ACCUMULATION_STEPS;
                 rlt::set(d_output_mlp, 0, 0, dL_dy);
                 rlt::backward(device, model, d_input_mlp, d_output_mlp, buffer);
 
@@ -136,13 +113,13 @@ namespace hvac
                 }
             }
 
-            // Handle remaining gradients if balanced_size is not divisible by GRADIENT_ACCUMULATION_STEPS
-            if (balanced_size % GRADIENT_ACCUMULATION_STEPS != 0)
+            // Handle remaining gradients if TRAIN_SIZE is not divisible by GRADIENT_ACCUMULATION_STEPS
+            if (TRAIN_SIZE % GRADIENT_ACCUMULATION_STEPS != 0)
             {
                 rlt::step(device, optimizer, model);
             }
 
-            loss_avg = loss_total / balanced_size;
+            loss_avg = loss_total / TRAIN_SIZE;
 
             printf("Epoch %d, Loss: %f, Gap: %f\n", epoch, loss_avg, (prev_loss_avg - loss_avg));
             epoch++;
@@ -172,7 +149,7 @@ namespace hvac
 
     void HVACControler::shuffle()
     {
-        for (TI i = balanced_size - 1; i > 0; --i)
+        for (TI i = TRAIN_SIZE - 1; i > 0; --i)
         {
             TI j = rlt::random::uniform_int_distribution(device.random, (TI)0, i, rng);
             std::swap(indices[i], indices[j]);
